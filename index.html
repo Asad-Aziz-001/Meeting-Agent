@@ -278,7 +278,7 @@ ${transcript}`;
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.1,
-            maxOutputTokens: 2500,
+            maxOutputTokens: 8192,
             responseMimeType: "application/json"
           }
         })
@@ -288,9 +288,24 @@ ${transcript}`;
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
 
-    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    raw = raw.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(raw);
+    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    raw = raw.replace(/```json|```/g, "").trim();
+
+    // Robustly extract JSON object
+    const jsonStart = raw.indexOf("{");
+    const jsonEnd = raw.lastIndexOf("}");
+    if (jsonStart !== -1 && jsonEnd !== -1) raw = raw.substring(jsonStart, jsonEnd + 1);
+
+    // Try parse, fallback: repair truncated JSON
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch(parseErr) {
+      const trimmed = raw.replace(/,?\s*"[^"]*"\s*:\s*"[^"]*$/, "").replace(/,\s*$/, "");
+      const fixed = trimmed + (trimmed.endsWith("}") ? "" : "}");
+      try { result = JSON.parse(fixed); }
+      catch(e2) { throw new Error("Gemini response was cut off. Please try again."); }
+    }
     lastResult = result;
     renderOutput(result);
     document.getElementById('statusMsg').textContent = '';
