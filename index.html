@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting-to-Action Pipeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222534;
+    --border: #2e3148;
+    --accent: #4f6ef7;
+    --accent2: #7c3aed;
+    --text: #e8eaf6;
+    --muted: #8b8fa8;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #38bdf8;
+  }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6; }
+
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 32px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 10; }
+  .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #4285f4, #34a853); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .logo-text { font-size: 17px; font-weight: 600; }
+  .badge { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; background: rgba(79,110,247,0.15); color: var(--accent); border: 1px solid rgba(79,110,247,0.3); margin-left: auto; }
+
+  .main { max-width: 860px; margin: 0 auto; padding: 36px 24px 80px; }
+  .hero { margin-bottom: 28px; }
+  .hero h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .hero p { color: var(--muted); font-size: 14px; max-width: 580px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; margin-bottom: 14px; }
+  .card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+
+  .api-row { display: flex; gap: 10px; align-items: center; }
+  .api-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 10px 14px; outline: none; transition: border-color 0.2s; }
+  .api-input:focus { border-color: var(--accent); }
+  .api-hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .api-hint a { color: var(--accent); text-decoration: none; }
+
+  textarea#transcript { width: 100%; min-height: 190px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.65; padding: 14px; resize: vertical; outline: none; transition: border-color 0.2s; }
+  textarea#transcript:focus { border-color: var(--accent); }
+  textarea#transcript::placeholder { color: var(--muted); }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .btn-primary { display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; border-radius: 10px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .btn-ghost { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 9px 16px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-copy { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+  .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+  #statusMsg { font-size: 13px; color: var(--muted); }
+  .spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .output-section { display: none; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .metric { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .metric-val { font-size: 28px; font-weight: 700; line-height: 1; }
+  .metric-lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .conf-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .conf-fill { height: 100%; background: var(--success); border-radius: 2px; transition: width 0.8s ease; }
+
+  .tab-row { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab-btn { font-size: 13px; padding: 6px 18px; border-radius: 20px; border: 1px solid var(--border); background: none; color: var(--muted); cursor: pointer; transition: all 0.2s; font-weight: 500; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .escalation-card { background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }
+  .escalation-title { font-size: 13px; font-weight: 600; color: var(--danger); display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .escalation-item { font-size: 13px; color: #fca5a5; padding: 5px 0; display: flex; gap: 8px; border-bottom: 1px solid rgba(239,68,68,0.1); }
+  .escalation-item:last-child { border-bottom: none; }
+
+  .summary-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }
+  .summary-card p { font-size: 14px; color: #c4c8e4; line-height: 1.75; }
+
+  .action-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; display: flex; gap: 12px; align-items: flex-start; transition: border-color 0.2s; }
+  .action-item:hover { border-color: var(--accent); }
+  .action-num { width: 26px; height: 26px; min-width: 26px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .action-task { font-size: 14px; font-weight: 500; line-height: 1.45; }
+  .action-meta { display: flex; gap: 7px; margin-top: 7px; flex-wrap: wrap; align-items: center; }
+  .chip { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+  .chip-owner { background: rgba(56,189,248,0.12); color: var(--info); }
+  .chip-date { background: rgba(139,143,168,0.12); color: var(--muted); }
+  .chip-high { background: rgba(239,68,68,0.12); color: var(--danger); }
+  .chip-medium { background: rgba(245,158,11,0.12); color: var(--warning); }
+  .chip-low { background: rgba(34,197,94,0.12); color: var(--success); }
+
+  .list-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: #c4c8e4; }
+  .list-item:last-child { border-bottom: none; }
+  .list-icon { font-size: 15px; margin-top: 1px; flex-shrink: 0; }
+
+  .code-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: #c4c8e4; }
+  .copy-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .section-header { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; margin-top: 4px; }
+
+  .participants-row { font-size: 12px; color: var(--muted); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+  @media (max-width: 600px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .topbar { padding: 12px 16px; }
+    .main { padding: 20px 14px 60px; }
+    .hero h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo-icon">⚡</div>
+  <span class="logo-text">Meeting-to-Action Pipeline</span>
+  <span class="badge">Gemini 2.5 Flash</span>
+</div>
+
+<div class="main">
+  <div class="hero">
+    <h1>Turn messy meetings into clean action items</h1>
+    <p>Paste any transcript — timestamped, with crosstalk, speaker labels, or plain text. The agent extracts decisions, actions, open questions, and formats everything for Slack and email.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-label">🔑 Gemini API Key</div>
+    <div class="api-row">
+      <input type="password" class="api-input" id="apiKey" placeholder="AIza..." oninput="onInput()">
+    </div>
+    <p class="api-hint">Free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></p>
+  </div>
+
+  <div class="card">
+    <div class="card-label">📋 Meeting Transcript</div>
+    <textarea id="transcript" placeholder="Paste raw meeting transcript here..." oninput="onInput()"></textarea>
+    <div class="toolbar">
+      <button class="btn-primary" id="runBtn" onclick="runAgent()" disabled>▶ Run Agent</button>
+      <button class="btn-ghost" onclick="loadExample()">Load Example</button>
+      <span id="statusMsg"></span>
+    </div>
+  </div>
+
+  <div class="output-section" id="outputSection">
+    <div class="metrics-grid" id="metricsGrid"></div>
+    <div id="escalationBlock"></div>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="switchTab('structured', this)">📊 Structured View</button>
+      <button class="tab-btn" onclick="switchTab('slack', this)">💬 Slack</button>
+      <button class="tab-btn" onclick="switchTab('email', this)">📧 Email</button>
+    </div>
+    <div id="tabContent"></div>
+  </div>
+</div>
+
+<script>
+const EXAMPLE = `[Zoom Call — Product Sprint Review — May 22, 2026]
+
+Sarah (PM): Okay let's get started, we're already 5 mins late. So quick recap — the dashboard redesign. Alex, where are we?
+
+Alex (Eng): Yeah so we finished the new chart components, but the data pipeline is still throwing errors on the staging server. I need DevOps to look at the config.
+
+Sarah: Okay so that's a blocker. When do you think you can fix it?
+
+Alex: If DevOps gets on it today, maybe Thursday? But I can't promise.
+
+Sarah: Okay I'll ping Raj after this. Also — the mobile responsiveness, that was supposed to be done last week.
+
+Alex: That's on me, I got pulled into the auth bug. I'd say two more days.
+
+Sarah: Right. Priya, what about the user interviews?
+
+Priya (Design): So I did three sessions, the feedback is really mixed. Users love the new layout but there's major confusion around the filter panel. I also have a whole deck I can share.
+
+Sarah: Please share that in Slack. Also can you do two more interviews before the demo? The stakeholders want at least five.
+
+Priya: Yeah I can do that. But I need the updated prototype from Alex first.
+
+Alex: Oh that's done actually, I'll drop the Figma link right now... done.
+
+Sarah: Budget thing — we talked about adding a third contractor. Mike, where's that approval?
+
+Mike (Finance): I submitted the request but I haven't heard back from legal. It might take another week, could be a blocker for the June launch.
+
+Sarah: That's a risk we need to flag. Can you follow up today?
+
+Mike: Yes I'll send a nudge.
+
+Sarah: We didn't actually decide on the launch date. I was assuming June 15 but has that been confirmed?
+
+Alex: I thought it was June 20?
+
+Priya: I've been seeing different dates in different emails.
+
+Sarah: Okay that's a problem. I'm going to set up a separate call with leadership to nail that down.
+
+Mike: Oh — the analytics integration. No one picked that up.
+
+Sarah: Who can take that?
+
+Alex: I can look at it but I'm slammed.
+
+Sarah: Let's call it unassigned for now. Okay, let's wrap up.`;
+
+let activeTab = 'structured';
+let lastResult = null;
+
+function loadExample() {
+  document.getElementById('transcript').value = EXAMPLE;
+  onInput();
+}
+
+function onInput() {
+  const key = document.getElementById('apiKey').value.trim();
+  const txt = document.getElementById('transcript').value.trim();
+  document.getElementById('runBtn').disabled = !(key.length > 10 && txt.length > 20);
+}
+
+function switchTab(t, el) {
+  activeTab = t;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (lastResult) renderTabContent(lastResult);
+}
+
+async function runAgent() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const transcript = document.getElementById('transcript').value.trim();
+  if (!apiKey || !transcript) return;
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analyzing…';
+  document.getElementById('statusMsg').textContent = 'Agent is processing your transcript…';
+  document.getElementById('outputSection').style.display = 'none';
+
+  const prompt = `You are an expert meeting analysis agent. Analyze the following meeting transcript carefully and return ONLY a valid JSON object — no preamble, no explanation, no markdown code fences.
+
+Required JSON structure:
+{
+  "confidence": <float 0.0-1.0, how clearly the transcript conveyed decisions and actions>,
+  "summary": "<2-3 sentence executive summary of the meeting>",
+  "decisions": ["<Decision 1>", "<Decision 2>"],
+  "action_items": [
+    {
+      "task": "<clear task description>",
+      "owner": "<person name or Unassigned>",
+      "deadline": "<deadline string or null>",
+      "urgency": "<high|medium|low>"
+    }
+  ],
+  "open_questions": ["<Unresolved question 1>"],
+  "escalations": ["<Item needing human judgment — unresolved decisions, unassigned blockers, approval pending>"],
+  "participants": ["<Name (Role)>"],
+  "slack_message": "<Full Slack message using • for bullets and *bold* for headers, ready to paste>",
+  "email_body": "<Full email starting with 'Subject: ...' on first line, then professional body>"
+}
+
+Urgency rules:
+- high = blocking another task, launch, or has an imminent deadline
+- medium = time-sensitive but not immediately blocking
+- low = can wait
+
+Owner rules:
+- If no clear owner is stated, set owner to "Unassigned" and include the task in escalations
+- If someone volunteers reluctantly or says they're busy, still assign but flag in escalations
+
+Transcript:
+${transcript}`;
+
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2500,
+            responseMimeType: "application/json"
+          }
+        })
+      }
+    );
+
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    raw = raw.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(raw);
+    lastResult = result;
+    renderOutput(result);
+    document.getElementById('statusMsg').textContent = '';
+  } catch(e) {
+    document.getElementById('statusMsg').textContent = '❌ ' + (e.message || 'Error. Check API key and try again.');
+    btn.disabled = false;
+    btn.innerHTML = '▶ Run Agent';
+    onInput();
+    return;
+  }
+
+  btn.innerHTML = '▶ Run Again';
+  btn.disabled = false;
+  onInput();
+}
+
+function renderOutput(r) {
+  document.getElementById('outputSection').style.display = 'block';
+  const confPct = Math.round((r.confidence || 0.8) * 100);
+
+  document.getElementById('metricsGrid').innerHTML = `
+    <div class="metric">
+      <div class="metric-val">${(r.action_items||[]).length}</div>
+      <div class="metric-lbl">Action Items</div>
+    </div>
+    <div class="metric">
+      <div class="metric-val">${(r.decisions||[]).length}</div>
+      <div class="metric-lbl">Decisions</div>
+    </div>
+    <div class="metric">
+      <div class="metric-val">${(r.open_questions||[]).length}</div>
+      <div class="metric-lbl">Open Questions</div>
+    </div>
+    <div class="metric">
+      <div class="metric-val">${confPct}%</div>
+      <div class="metric-lbl">Confidence</div>
+      <div class="conf-bar"><div class="conf-fill" style="width:${confPct}%"></div></div>
+    </div>`;
+
+  const escs = r.escalations || [];
+  document.getElementById('escalationBlock').innerHTML = escs.length ? `
+    <div class="escalation-card">
+      <div class="escalation-title">⚠️ Needs Human Judgment (${escs.length})</div>
+      ${escs.map(e => `<div class="escalation-item"><span>→</span><span>${esc(e)}</span></div>`).join('')}
+    </div>` : '';
+
+  renderTabContent(r);
+}
+
+function renderTabContent(r) {
+  const el = document.getElementById('tabContent');
+
+  if (activeTab === 'structured') {
+    const actions = (r.action_items||[]).map((a,i) => `
+      <div class="action-item">
+        <div class="action-num">${i+1}</div>
+        <div style="flex:1">
+          <div class="action-task">${esc(a.task)}</div>
+          <div class="action-meta">
+            <span class="chip chip-owner">👤 ${esc(a.owner)}</span>
+            ${a.deadline ? `<span class="chip chip-date">📅 ${esc(a.deadline)}</span>` : ''}
+            <span class="chip chip-${a.urgency||'low'}">${(a.urgency||'low').toUpperCase()}</span>
+          </div>
+        </div>
+      </div>`).join('');
+
+    const decisions = (r.decisions||[]).map(d =>
+      `<div class="list-item"><span class="list-icon">✅</span><span>${esc(d)}</span></div>`).join('');
+
+    const questions = (r.open_questions||[]).map(q =>
+      `<div class="list-item"><span class="list-icon">❓</span><span>${esc(q)}</span></div>`).join('');
+
+    const participants = (r.participants||[]).length
+      ? `<div class="participants-row">👥 Participants: ${r.participants.map(p=>esc(p)).join(' &nbsp;·&nbsp; ')}</div>`
+      : '';
+
+    el.innerHTML = `
+      <div class="summary-card">
+        <div class="section-header">📄 Summary</div>
+        <p>${esc(r.summary||'')}</p>
+      </div>
+      ${actions ? `<div class="section-header">✅ Action Items</div><div style="margin-bottom:14px">${actions}</div>` : ''}
+      ${decisions ? `<div class="card"><div class="section-header">🎯 Decisions Made</div>${decisions}${participants}</div>` : participants ? `<div class="card">${participants}</div>` : ''}
+      ${questions ? `<div class="card" style="margin-top:4px"><div class="section-header">❓ Open Questions</div>${questions}</div>` : ''}`;
+
+  } else if (activeTab === 'slack') {
+    el.innerHTML = `
+      <div class="copy-row">
+        <button class="btn-copy" onclick="copyId('slackBox', this)">📋 Copy</button>
+      </div>
+      <div class="code-block" id="slackBox">${esc(r.slack_message||'No Slack message generated.')}</div>`;
+  } else {
+    el.innerHTML = `
+      <div class="copy-row">
+        <button class="btn-copy" onclick="copyId('emailBox', this)">📋 Copy</button>
+      </div>
+      <div class="code-block" id="emailBox">${esc(r.email_body||'No email generated.')}</div>`;
+  }
+}
+
+function copyId(id, btn) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent).catch(()=>{});
+  btn.textContent = '✅ Copied!';
+  setTimeout(() => btn.textContent = '📋 Copy', 1500);
+}
+
+function esc(s) {
+  return String(s||'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
